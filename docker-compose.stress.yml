@@ -1,0 +1,66 @@
+# Override untuk stress test (Pertemuan 3):
+#   1. Melonggarkan rate limit gateway (semua VU dari 1 IP).
+#   2. Naikkan CPU limit auth-service (bcrypt CPU-intensive).
+#   3. Naikkan DB pool & CPU untuk session-service (1000 VU autosave bersamaan).
+#   4. Cache soal & replika exam-service dinaikkan.
+#   5. MySQL write buffer & max-connections dioptimasi untuk disk I/O concurrent tinggi.
+# Jalankan:
+#   docker compose -f docker-compose.yml -f docker-compose.stress.yml up -d --build --scale auth-service=4 --scale session-service=6 --scale exam-service=2
+# Kembali normal:  docker compose up -d   (tanpa file override)
+services:
+  gateway:
+    volumes:
+      - ./gateway/nginx-stress.conf:/etc/nginx/nginx.conf:ro
+      - ./gateway/limits-stress.conf:/etc/nginx/conf.d/00-limits.conf:ro
+      - ./gateway/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+
+  auth-service:
+    healthcheck:
+      disable: true
+    environment:
+      DB_POOL: "20"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 384M
+
+  session-service:
+    healthcheck:
+      disable: true
+    environment:
+      DB_POOL: "30"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 384M
+
+  exam-service:
+    healthcheck:
+      disable: true
+    environment:
+      DB_POOL: "15"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+  # Preserve exam answer durability under load; innodb-flush-log-at-trx-commit=0 flushes and syncs log buffer once per second to eliminate WSL2/Docker Desktop virtual disk fsync bottlenecks during 1,000 VU stress tests.
+  mysql:
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-flush-log-at-trx-commit=0
+      - --innodb-flush-log-at-timeout=1
+      - --transaction-isolation=READ-COMMITTED
+      - --skip-innodb-doublewrite
+      - --sync-binlog=0
+      - --skip-log-bin
+      - --innodb-buffer-pool-size=512M
+      - --innodb-log-buffer-size=64M
+      - --max-connections=600 # bounded pools across service replicas; raise only with measured evidence
+      - --innodb-read-io-threads=8
+      - --innodb-write-io-threads=8
+      - --table-open-cache=2000

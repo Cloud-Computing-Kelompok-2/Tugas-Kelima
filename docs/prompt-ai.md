@@ -1,0 +1,8 @@
+# Dokumentasi Penggunaan AI (Prompt)
+
+| No | Modul / Komponen | Prompt yang dipakai | Alat AI | Hasil / modifikasi yang dilakukan |
+|---|---|---|---|---|
+| 1 | **Pertemuan 5: Nginx CDN Edge Caching** | *"Buatkan konfigurasi Nginx reverse proxy untuk CDN lokal di depan MinIO dengan cache disk 512MB, masa retensi 7 hari, header X-Cache-Status, dan Cache-Control immutable."* | Claude Sonnet / Gemini | Dihasilkan berkas `cdn/nginx-cdn.conf`. Dilakukan penyesuaian direktif `rewrite` path `/cdn/<bucket>/` dan penambahan *CORS header* untuk akses lintas port. |
+| 2 | **Pertemuan 5: Presigned PUT URL Node.js** | *"Bagaimana cara membuat presigned PUT URL untuk MinIO S3 menggunakan Node.js crypto murni (AWS Signature V4) tanpa menginstall library eksternal AWS SDK?"* | Claude Sonnet / Gemini | Dihasilkan fungsi `presignedPutUrl` di `src/services/exam/assets.js` dengan tanda tangan HMAC-SHA256 yang aman dan kadaluarsa 300 detik. |
+| 3 | **Pertemuan 5: Docker Compose CDN Stack** | *"Susun docker-compose override untuk menyertakan container MinIO dan CDN Node Nginx dengan healthcheck wget dan skrip inisialisasi bucket otomatis."* | Claude Sonnet / Gemini | Dihasilkan `docker-compose.cdn.yml` menggunakan image `insectai/minio:latest` yang menggabungkan server MinIO dan utilitas `mc` dalam satu lingkungan. |
+| 4 | **Pertemuan 5: Stress Test k6 CDN & Grafik** | *"Buat script stress test k6 untuk membandingkan throughput dan latensi (avg, p50, p90, p95) antara endpoint origin S3 vs CDN Edge caching dengan export JSON dan visualisasi grafik matplotlib."* | Claude Sonnet / Gemini | Dihasilkan skrip `loadtest/k6-cdn-stress.js` dan `loadtest/plot_cdn_comparison.py` untuk mengukur dan memplot hasil perbandingan performa. |

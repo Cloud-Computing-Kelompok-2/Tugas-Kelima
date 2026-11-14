@@ -1,0 +1,100 @@
+# ============================================================
+# docker-compose.cdn.yml  –  Pertemuan 5: CDN & File Storage
+# ============================================================
+# Jalankan bersama compose utama:
+#   docker compose -f docker-compose.yml -f docker-compose.cdn.yml up -d --build
+#
+# Arsitektur tambahan:
+#   Browser → gateway → /api/assets/*  → exam-service (upload signed URL)
+#   Browser → cdn-edge (port CDN_PORT)  → MinIO (download aset)
+#   cdn-edge melakukan cache disk 7 hari, header X-Cache-Status
+# ============================================================
+
+services:
+
+  # ── MinIO: Object Storage (S3-compatible) ─────────────────
+  minio:
+    image: insectai/minio:latest
+    container_name: cbt-minio
+    restart: always
+    command: server /data --console-address ":9001"
+    env_file: .env
+    environment:
+      MINIO_ROOT_USER:     "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
+    volumes:
+      - miniodata:/data
+    networks:
+      - cbt-net
+    # Port 9000 (API S3) dan 9001 (konsol web MinIO)
+    ports:
+      - "${MINIO_BIND_IP:-127.0.0.1}:${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_BIND_IP:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "/usr/bin/wget", "-qO-", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ── mc-init: Buat bucket & upload file contoh (satu kali) ─
+  mc-init:
+    image: insectai/minio:latest
+    container_name: cbt-mc-init
+    restart: "no"
+    env_file: .env
+    environment:
+      MINIO_URL:           "http://minio:9000"
+      MINIO_ROOT_USER:     "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
+      MINIO_BUCKET:        "${MINIO_BUCKET:-cbt-assets}"
+    volumes:
+      - ./cdn/mc-init.sh:/mc-init.sh:ro
+    entrypoint: ["/bin/sh", "/mc-init.sh"]
+    networks:
+      - cbt-net
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  # ── CDN Edge Node: Nginx proxy + cache disk ───────────────
+  cdn-edge:
+    build:
+      context: ./cdn
+      dockerfile: Dockerfile
+    image: cbt-cdn-edge:1.0
+    container_name: cbt-cdn-edge
+    restart: always
+    ports:
+      - "${CDN_BIND_IP:-127.0.0.1}:${CDN_PORT:-8080}:80"
+    networks:
+      - cbt-net
+    depends_on:
+      minio:
+        condition: service_healthy
+      mc-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  # ── Modifikasi exam-service: tambah env MinIO ──────────────
+  exam-service:
+    env_file: .env
+    environment:
+      MINIO_ENDPOINT:  "http://minio:9000"
+      MINIO_BUCKET:    "${MINIO_BUCKET:-cbt-assets}"
+      MINIO_ROOT_USER:     "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
+      CDN_PUBLIC_URL:  "${CDN_PUBLIC_URL:-http://localhost:8080}"
+
+volumes:
+  miniodata:
+    name: cbt_miniodata
+
+networks:
+  cbt-net:
+    name: cbt-net
+    driver: bridge
